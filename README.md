@@ -37,6 +37,28 @@ Python 3.11, pandas, NumPy, scikit-learn, Matplotlib and Streamlit (the five
 packages in `requirements.txt`). Tests use Python's built-in `unittest` and
 Streamlit's `AppTest`.
 
+## Interface and theme
+
+The dashboard follows a near-black, typography-led design system:
+
+| Token | Value | Used for |
+|---|---|---|
+| Background / surface / raised | `#0A0A0A` / `#141414` / `#1E1E1E` | page, cards and inputs, chart grid lines |
+| Border | `#292929` | card and widget borders |
+| Text / muted / subtle | `#F5F5F3` / `#A3A3A3` / `#707070` | body text, secondary text, monospaced labels |
+| Accent | `#F2693A` (orange) | selected K, active tab, primary download, PC1 |
+| Code green / violet | `#59D08A` / `#A78BFA` | status and "highest" marks, elbow ring, PC2 |
+
+- The theme lives in `.streamlit/config.toml` (colours, local system font
+  stacks, heading sizes, rounded buttons). No web fonts are downloaded.
+- `app.py` adds a small CSS block (no JavaScript) for the uppercase
+  monospaced section labels and the header details.
+- `charts.py` repeats the same hex values so Matplotlib charts match the
+  interface. Each cluster has a fixed colour **and** marker shape, and labels
+  always show the cluster number and name, so colour is never the only cue.
+- The layout uses Streamlit's responsive columns: on narrow screens cards
+  stack in reading order and wide tables scroll inside their frames.
+
 ## Project structure
 
 ```
@@ -45,9 +67,9 @@ CricketXray/
 ├── data_loader.py         # load_data(): read, validate, clean and merge the CSVs
 ├── preprocessing.py       # prepare_features(): minimum-matches filter + engineered features
 ├── modeling.py            # imputation, scaling, K-Means, evaluation, PCA, interpretation
-├── charts.py              # Matplotlib charts styled to match the app theme
+├── charts.py              # Matplotlib charts using the same design tokens as the theme
 ├── requirements.txt
-├── .streamlit/config.toml # dark cricket theme (no custom CSS)
+├── .streamlit/config.toml # design-system theme (colours, fonts, radii)
 ├── tests/
 │   ├── test_data_loader.py
 │   ├── test_preprocessing.py

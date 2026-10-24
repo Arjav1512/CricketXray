@@ -4,8 +4,11 @@ Run with:  streamlit run app.py
 
 The sidebar settings (minimum matches, K) drive every tab. All numbers on the
 page are computed live from the CSV files in data/; nothing is hardcoded.
+Visual design: theme tokens in .streamlit/config.toml, chart styling in charts.py,
+and a small CSS block below for the few details the theme cannot express.
 """
 
+import html
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
@@ -23,7 +26,7 @@ from modeling import (
     elbow_heuristic, evaluate_k_range, label, model_settings, most_similar_players, run_pipeline,
 )
 from preprocessing import (
-    DEFAULT_MIN_MATCHES, EXCLUDED_FEATURES, FEATURE_DEFINITIONS, PreprocessingError,
+    CATEGORIES, DEFAULT_MIN_MATCHES, EXCLUDED_FEATURES, FEATURE_DEFINITIONS, PreprocessingError,
     activity_indicators, get_preprocessing_report, prepare_features,
 )
 
@@ -38,10 +41,34 @@ SOURCE_COLUMNS = {
     "bowling": ["Inns", "Overs", "Mdns", "Runs", "Wkts", "BBI", "Ave", "Econ", "SR", "4", "5"],
     "fielding": ["Inns", "Dis", "Ct", "St", "Ct Wk", "Ct Fi", "MD"],
 }
+# Merged columns shown in the compact data preview (all columns are one toggle away).
+PREVIEW_COLUMNS = ["Player", "Span_Bat", "Mat_Bat", "Runs_Bat", "HS_Bat", "Ave_Bat", "SR_Bat",
+                   "Wkts_Bowl", "Econ_Bowl", "BBI_Bowl", "Ct_Field", "St_Field"]
+
+# Design-system details that .streamlit/config.toml cannot express. Only our own
+# cx-* classes and plain heading tags are styled; no Streamlit internals are targeted.
+CSS = """
+<style>
+h1, h2, h3 { letter-spacing: -0.02em; }
+.cx-eyebrow {
+  font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.68rem;
+  letter-spacing: 0.1em; text-transform: uppercase; color: #707070; margin: 0 0 0.35rem 0;
+}
+.cx-lead { font-size: 1.05rem; line-height: 1.6; color: #A3A3A3; max-width: 46rem; margin: 0; }
+.cx-meta {
+  font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.72rem; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #707070; text-align: right; line-height: 1.9; margin: 0;
+}
+.cx-meta b { color: #A3A3A3; font-weight: 500; }
+@media (max-width: 640px) { .cx-meta { text-align: left; } }  /* header columns stack on phones */
+.cx-step-title { font-weight: 500; color: #F5F5F3; margin: 0 0 0.25rem 0; }
+.cx-muted { color: #A3A3A3; font-size: 0.9rem; line-height: 1.55; margin: 0; }
+</style>
+"""
 
 
 # ---------------------------------------------------------------------------
-# Cached computation (keyed by the sidebar settings)
+# Cached computation (keyed by the data files and the sidebar settings)
 # ---------------------------------------------------------------------------
 
 def data_signature():
@@ -89,9 +116,22 @@ def package_version(name):
         return None
 
 
+def eyebrow(text):
+    """Small monospaced uppercase label, as used for section labels in the design system."""
+    st.markdown(f'<p class="cx-eyebrow">{html.escape(text)}</p>', unsafe_allow_html=True)
+
+
 def show_chart(fig, alt):
     st.pyplot(fig, alt=alt)
     plt.close(fig)
+
+
+def chart_card(title, fig, alt, caption=None):
+    with st.container(border=True):
+        eyebrow(title)
+        show_chart(fig, alt)
+        if caption:
+            st.caption(caption)
 
 
 def show_error(where, error):
@@ -117,6 +157,12 @@ def cluster_title(cluster_id, interpretation):
     return f"Cluster {cluster_id} · {interpretation.loc[cluster_id, 'label']}"
 
 
+def cluster_badge(cluster_id, interpretation=None):
+    """Badge in the cluster's chart colour; the number is always shown so colour is not the only cue."""
+    text = f"Cluster {cluster_id}" if interpretation is None else cluster_title(cluster_id, interpretation)
+    st.badge(text, color=charts.cluster_badge_color(cluster_id))
+
+
 def pc_description(loadings, component, top=3):
     weights = loadings[component]
     strongest = weights.abs().sort_values(ascending=False).index[:top]
@@ -124,33 +170,40 @@ def pc_description(loadings, component, top=3):
     return ", ".join(parts)
 
 
+def section_intro(title_eyebrow, text):
+    eyebrow(title_eyebrow)
+    st.markdown(f'<p class="cx-muted">{html.escape(text)}</p>', unsafe_allow_html=True)
+
+
 # ---------------------------------------------------------------------------
-# Page
+# Page shell: settings, header, data and model
 # ---------------------------------------------------------------------------
 
 st.set_page_config(page_title="Cricket X-Ray", page_icon=":material/sports_cricket:", layout="wide")
+st.html(CSS)
 
 with st.sidebar:
-    st.header(":material/sports_cricket: Cricket X-Ray")
-    st.caption("Unsupervised player profiles from T20 international career statistics.")
-    st.subheader("Model settings")
+    eyebrow("Cricket X-Ray")
+    st.markdown("**Analysis settings**")
+    st.caption("Every tab, chart and download follows these settings.")
+    st.space("small")
+    eyebrow("01 · Player filter")
     min_matches = st.slider(
         "Minimum T20 matches", min_value=1, max_value=30, value=DEFAULT_MIN_MATCHES,
         help="Players with fewer matches are left out. 5 is a practical default to avoid "
              "profiles built on one or two games, not a statistically optimal value.",
     )
+    eyebrow("02 · Clustering")
     k = st.slider(
         "Number of clusters (K)", min_value=MIN_K, max_value=MAX_K, value=DEFAULT_K,
         help="K-Means needs K in advance. Use the Model evaluation tab to compare values.",
     )
-    st.caption("Changing a setting retrains the model; every tab updates to match.")
+    st.caption("Changing a setting retrains the model.")
+    st.divider()
+    sidebar_status = st.container()  # filled in once the model has run
     with st.expander("Reproducibility settings", icon=":material/tune:"):
         st.table(pd.DataFrame(model_settings(k).items(), columns=["Setting", "Value"]).astype(str),
                  hide_index=True)
-
-st.title("Cricket X-Ray")
-st.caption("Discovering cricket player performance profiles using unsupervised machine learning "
-           "(K-Means clustering and PCA) on T20 international batting, bowling and fielding records.")
 
 # Load data, features, model and evaluation. Each step can fail independently so
 # the data tabs stay usable even when modeling is not possible.
@@ -175,32 +228,55 @@ if data is not None:
     except Exception as error:
         evaluation_error = error
 
+with sidebar_status:
+    eyebrow("Current run")
+    if result is not None:
+        st.markdown(
+            f":green[●] Model trained  \n"
+            f"{len(result['labels']):,} players · {result['matrix']['X'].shape[1]} features · K = {k}"
+        )
+    elif data is not None:
+        st.markdown(":red[●] Model not trained (see the Overview tab)")
+    else:
+        st.markdown(":red[●] Data not loaded")
+
+header_left, header_right = st.columns([3, 2], vertical_alignment="bottom")
+with header_left:
+    eyebrow("T20 internationals · Unsupervised learning")
+    st.title("Cricket X-Ray")
+    st.markdown('<p class="cx-lead">Cricket performance intelligence</p>', unsafe_allow_html=True)
+with header_right:
+    players_text = "—" if data is None else f"{len(data['merged']):,} players"
+    st.markdown(
+        f'<p class="cx-meta">Dataset · <b>{players_text}</b><br>'
+        f'Filter · <b>≥ {min_matches} matches</b><br>'
+        f'Model · <b>K-Means · K = {k}</b></p>',
+        unsafe_allow_html=True,
+    )
+st.space("small")
+
 if load_error is not None:
     show_error("Data", load_error)
     st.info("Place the three T20 CSV files in `data/` (see the README) and refresh the page. "
             "The Methodology tab is still available.", icon=":material/info:")
 
-tabs = st.tabs([
-    ":material/dashboard: Overview",
-    ":material/table_chart: Data",
-    ":material/build: Features",
-    ":material/analytics: Model evaluation",
-    ":material/bubble_chart: Clusters",
-    ":material/person_search: Player explorer",
-    ":material/school: Methodology",
-])
+tabs = st.tabs(["Overview", "Data", "Features", "Model evaluation", "Clusters", "Player explorer",
+                "Methodology"])
 overview_tab, data_tab, features_tab, evaluation_tab, clusters_tab, player_tab, method_tab = tabs
 
 # ---------------------------------------------------------------------------
 # 1. Overview
 # ---------------------------------------------------------------------------
 with overview_tab:
+    st.space("small")
     st.markdown(
-        "Cricket X-Ray groups international T20 players by **how** they contribute "
-        "(batting, bowling, fielding, wicket-keeping) using only their career statistics. "
-        "No player is labelled in advance: K-Means discovers the groups, PCA draws them in 2D, "
-        "and simple, explicit rules turn each group's statistics into a readable profile."
+        '<p class="cx-lead">Cricket X-Ray groups international T20 players by <i>how</i> they '
+        "contribute (batting, bowling, fielding, wicket-keeping) using only their career "
+        "statistics. No player is labelled in advance: K-Means discovers the groups, PCA draws "
+        "them in 2D, and explicit rules turn each group's statistics into a readable profile.</p>",
+        unsafe_allow_html=True,
     )
+    st.space("small")
     with st.container(horizontal=True):
         st.metric("Source players", "—" if data is None else f"{len(data['merged']):,}", border=True)
         st.metric(f"Players with ≥ {min_matches} matches",
@@ -211,36 +287,65 @@ with overview_tab:
                   "—" if result is None or result["silhouette"] is None else f"{result['silhouette']:.3f}",
                   border=True)
 
-    if result is not None:
-        st.success(
-            f"K-Means trained with K = {k} on {len(result['labels']):,} players and "
-            f"{result['matrix']['X'].shape[1]} standardized features "
-            f"(minimum {min_matches} matches).", icon=":material/check_circle:")
-        st.subheader("Profiles found")
-        sizes = result["labels"].value_counts().sort_index()
-        st.dataframe(
-            pd.DataFrame({
-                "Cluster": sizes.index,
-                "Profile": [result["interpretation"].loc[c, "label"] for c in sizes.index],
-                "Players": sizes.values,
-                "Share": [f"{v / sizes.sum():.0%}" for v in sizes.values],
-            }),
-            hide_index=True, alt="Number of players in each cluster",
-        )
-        st.caption("Profile names are analytical interpretations of the statistics, not official "
-                   "cricket roles, and they do not rank players by quality.")
-    elif data is not None:
-        show_error("The model", model_error)
+    if result is None:
+        if data is not None:
+            show_error("The model", model_error)
+    else:
+        interpretation, labels = result["interpretation"], result["labels"]
+        names = interpretation["label"].to_dict()
+        sizes = labels.value_counts().sort_index()
 
-    st.subheader("Workflow")
-    st.markdown(
-        "1. **Load and validate** the batting, bowling and fielding CSV files and merge them on the full player name.\n"
-        "2. **Engineer features**: per-innings and per-match rates; undefined rates stay missing.\n"
-        "3. **Prepare the model input**: clip extreme values, fill undefined rates with medians, add a *has bowled* flag, standardize.\n"
-        "4. **Cluster** with K-Means and **evaluate** K with the elbow method and silhouette scores.\n"
-        "5. **Visualize** with PCA and **interpret** each cluster from its real statistics.\n"
-        "6. **Explore** individual players and **download** the results."
-    )
+        left, right = st.columns(2)
+        with left:
+            chart_card("PCA preview", charts.pca_scatter(result["pca"]["coords"], labels, names,
+                                                         result["pca"]["explained"], width=4.4, height=3.5,
+                                                         compact_legend=True),
+                       alt="PCA scatter plot of players coloured by cluster",
+                       caption="Full-size version, loadings and profiles in the Clusters tab.")
+        with right:
+            chart_card("Cluster distribution", charts.cluster_sizes_chart(sizes, names),
+                       alt="Bar chart of players per cluster with counts and shares",
+                       caption="Profile names are analytical interpretations of the statistics, not "
+                               "official cricket roles, and they do not rank players by quality.")
+
+        with st.container(border=True):
+            eyebrow("Analysis summary")
+            largest = sizes.idxmax()
+            lines = [
+                f"With **K = {k}** on **{len(labels):,} players** (at least {min_matches} matches), "
+                f"the largest group is **{cluster_title(largest, interpretation)}** "
+                f"({sizes[largest] / sizes.sum():.0%} of players).",
+                f"The silhouette score is **{result['silhouette']:.3f}**, which is "
+                f"{describe_silhouette(result['silhouette'])}." if result["silhouette"] is not None else
+                "The silhouette score is not defined for this run.",
+                f"The PCA map keeps **{result['pca']['explained']['total']:.0%}** of the variance of "
+                f"the {result['matrix']['X'].shape[1]} standardized features.",
+            ]
+            if evaluation is not None and best_silhouette_k(evaluation) is not None:
+                best_k, elbow_k = best_silhouette_k(evaluation), elbow_heuristic(evaluation)
+                lines.append(
+                    f"Across K = {MIN_K}–{MAX_K}, the highest silhouette is at K = {best_k} and the "
+                    f"inertia curve bends most at K = {elbow_k}; see Model evaluation.")
+            st.markdown("\n".join(f"- {line}" for line in lines))
+
+    st.space("small")
+    eyebrow("Workflow")
+    steps = [
+        ("Load and validate", "Check and merge the batting, bowling and fielding files on the full player name."),
+        ("Engineer features", "Per-innings and per-match rates; undefined rates stay missing."),
+        ("Prepare the model input", "Clip extremes, fill undefined rates with medians, add a has-bowled flag, standardize."),
+        ("Cluster", "K-Means groups players; the elbow method and silhouette scores guide K."),
+        ("Visualize and interpret", "PCA maps the clusters; rules turn real statistics into profiles."),
+        ("Explore and export", "Inspect any player and download the results."),
+    ]
+    for row_start in range(0, len(steps), 3):
+        for i, column in enumerate(st.columns(3), start=row_start):
+            title, text = steps[i]
+            with column:
+                with st.container(border=True, height="stretch"):
+                    eyebrow(f"{i + 1:02d}")
+                    st.markdown(f'<p class="cx-step-title">{title}</p><p class="cx-muted">{text}</p>',
+                                unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------------
 # 2. Data
@@ -251,33 +356,56 @@ with data_tab:
         show_error("Data", load_error)
     else:
         merged = data["merged"]
+        rows_per_file = sorted({len(data["raw"][name]) for name in DATASETS})
+        numeric_cells = sum(len(data["clean"][n]) * len(spec["numeric"]) for n, spec in DATASETS.items())
+        missing_cells = int(data["missing"]["Missing"].sum())
+        with st.container(horizontal=True):
+            st.metric("Source files", len(DATASETS), border=True)
+            st.metric("Players per file", " / ".join(f"{n:,}" for n in rows_per_file), border=True)
+            st.metric("Merged players", f"{merged.shape[0]:,}", border=True)
+            st.metric("Merged columns", merged.shape[1], border=True)
+            st.metric("Missing numeric values", f"{missing_cells / numeric_cells:.1%}", border=True,
+                      help=f"{missing_cells:,} of {numeric_cells:,} numeric source values are '-' "
+                           "(did not bat/bowl, or not defined).")
         st.success(f"All three datasets loaded and merged: {merged.shape[0]} players, "
                    f"{merged.shape[1]} columns.", icon=":material/check_circle:")
 
-        st.subheader("Source files")
-        st.table({
-            "Dataset": list(DATASETS),
-            "File": [f"data/{spec['file']}" for spec in DATASETS.values()],
-            "Rows": [len(data["raw"][name]) for name in DATASETS],
-            "Columns (raw)": [data["raw"][name].shape[1] for name in DATASETS],
-            "Columns (cleaned)": [data["clean"][name].shape[1] for name in DATASETS],
-            "Duplicate players": [int(data["clean"][name]["Player"].duplicated().sum()) for name in DATASETS],
-        })
-        st.caption("Cleaning drops the exported `Unnamed` index columns and adds parsed number "
-                   "columns for HS, BBI, Overs, and MD. The original text columns are kept.")
+        left, right = st.columns([3, 2])
+        with left:
+            with st.container(border=True, height="stretch"):
+                eyebrow("Source files")
+                st.table({
+                    "Dataset": list(DATASETS),
+                    "File": [f"data/{spec['file']}" for spec in DATASETS.values()],
+                    "Rows": [len(data["raw"][name]) for name in DATASETS],
+                    "Columns (raw)": [data["raw"][name].shape[1] for name in DATASETS],
+                    "Columns (cleaned)": [data["clean"][name].shape[1] for name in DATASETS],
+                    "Duplicate players": [int(data["clean"][name]["Player"].duplicated().sum()) for name in DATASETS],
+                })
+                st.caption("Cleaning drops the exported `Unnamed` index columns and adds parsed number "
+                           "columns for HS, BBI, Overs, and MD. The original text columns are kept.")
+        with right:
+            with st.container(border=True, height="stretch"):
+                eyebrow("Player overlap")
+                st.table({"Group": list(data["overlap"]), "Players": list(data["overlap"].values())})
 
-        st.subheader("Player overlap")
-        st.table({"Group": list(data["overlap"]), "Players": list(data["overlap"].values())})
+        with st.container(border=True):
+            eyebrow("Missing values by source column")
+            st.markdown('<p class="cx-muted">In the source files, <code>-</code> means the player did '
+                        "not bat/bowl, or the value is undefined (for example a batting average with no "
+                        "dismissals). The loader keeps these as missing values; it never turns them into 0.</p>",
+                        unsafe_allow_html=True)
+            st.space("small")
+            st.dataframe(data["missing"], hide_index=True, alt="Missing values per source column",
+                         column_config={"Missing %": st.column_config.NumberColumn(format="%.1f%%")})
 
-        st.subheader("Missing values")
-        st.write("In the source files, `-` means the player did not bat/bowl, or the value is "
-                 "undefined (for example a batting average with no dismissals). The loader keeps "
-                 "these as missing values; it never turns them into 0.")
-        st.dataframe(data["missing"], hide_index=True, alt="Missing values per source column")
-
-        st.subheader("Merged dataset")
-        st.write(f"Shape: **{merged.shape[0]} rows x {merged.shape[1]} columns**")
-        st.dataframe(merged.head(10), hide_index=True, alt="First 10 rows of the merged dataset")
+        with st.container(border=True):
+            eyebrow(f"Merged dataset · {merged.shape[0]} rows × {merged.shape[1]} columns")
+            show_all = st.toggle("Show all columns", value=False)
+            shown = merged if show_all else merged[[c for c in PREVIEW_COLUMNS if c in merged.columns]]
+            st.dataframe(shown.head(10), hide_index=True, alt="First 10 rows of the merged dataset")
+            st.caption(f"First 10 rows. {'All' if show_all else len(shown.columns)} of "
+                       f"{merged.shape[1]} columns shown.")
 
     with st.expander("Setup status", icon=":material/settings:"):
         if DATA_DIR.is_dir():
@@ -299,48 +427,61 @@ with features_tab:
     if features is None:
         show_error("Feature engineering", feature_error or load_error)
     else:
-        st.write(f"Minimum-matches threshold: **{min_matches}** (change it in the sidebar).")
+        st.markdown(f'<p class="cx-muted">Minimum-matches threshold: <b>{min_matches}</b>. '
+                    "Adjust it under <i>Player filter</i> in the sidebar; every tab updates.</p>",
+                    unsafe_allow_html=True)
+        st.space("small")
         with st.container(horizontal=True):
             st.metric("Initial players", report["initial_players"], border=True)
             st.metric(f"Excluded (< {min_matches} matches)", report["excluded_players"], border=True)
             st.metric("Remaining players", report["remaining_players"], border=True)
             st.metric("Engineered features", report["feature_count"], border=True)
 
-        st.subheader("Feature definitions")
-        st.write("Categories represented: " + ", ".join(
-            f"**{cat}** ({len(report['features_by_category'][cat])})"
-            for cat in report["categories_represented"]))
-        st.dataframe(
-            {
-                "Feature": list(features.columns),
-                "Name": [label(c) for c in features.columns],
-                "Category": [FEATURE_DEFINITIONS[c][0] for c in features.columns],
-                "Definition": [FEATURE_DEFINITIONS[c][1] for c in features.columns],
-                "Unit": [FEATURE_UNITS.get(c, "") for c in features.columns],
-                "Missing (undefined)": [report["missing_per_feature"][c] for c in features.columns],
-            },
-            hide_index=True, alt="Engineered feature definitions",
-        )
-        if report["dropped_features"]:
-            st.warning(f"Dropped (all missing or constant): {report['dropped_features']}")
-        for name, reason in EXCLUDED_FEATURES.items():
-            st.caption(f"`{name}` is not included: {reason}")
+        eyebrow("Feature categories")
+        category_columns = st.columns(len(CATEGORIES))
+        for column, category in zip(category_columns, CATEGORIES):
+            with column:
+                with st.container(border=True, height="stretch"):
+                    names_in_category = report["features_by_category"][category]
+                    st.markdown(f"**{category.capitalize()}** · {len(names_in_category)}")
+                    st.markdown("\n".join(f"- {label(f)}" for f in names_in_category) or "—")
 
-        st.subheader("Missing values")
-        st.write(
-            f"Of the remaining players, **{report['never_batted']}** never batted, "
-            f"**{report['never_bowled']}** never bowled, and **{report['never_fielded']}** never "
-            "fielded. For these players, count-based features (for example wickets per match) are 0, "
-            "while rates (averages, strike rates, economy) are left missing, because an undefined "
-            "average is not a poor average. Rates are also missing when the denominator is 0 (for "
-            "example a batting average for a player who was never dismissed). The Methodology tab "
-            "explains how the model handles them."
-        )
+        with st.container(border=True):
+            eyebrow("Feature definitions")
+            st.dataframe(
+                {
+                    "Feature": list(features.columns),
+                    "Name": [label(c) for c in features.columns],
+                    "Category": [FEATURE_DEFINITIONS[c][0] for c in features.columns],
+                    "Definition": [FEATURE_DEFINITIONS[c][1] for c in features.columns],
+                    "Unit": [FEATURE_UNITS.get(c, "") for c in features.columns],
+                    "Missing (undefined)": [report["missing_per_feature"][c] for c in features.columns],
+                },
+                hide_index=True, alt="Engineered feature definitions",
+            )
+            if report["dropped_features"]:
+                st.warning(f"Dropped (all missing or constant): {report['dropped_features']}")
+            for name, reason in EXCLUDED_FEATURES.items():
+                st.caption(f"`{name}` is not included: {reason}")
 
-        st.subheader("Engineered features (first 20 players)")
-        st.dataframe(features.head(20).round(3), alt="Engineered feature values for the first 20 players")
-        st.subheader("Summary statistics")
-        st.dataframe(features.describe().T.round(3), alt="Summary statistics of the engineered features")
+        with st.container(border=True):
+            eyebrow("Missing values")
+            st.markdown(
+                f"Of the remaining players, **{report['never_batted']}** never batted, "
+                f"**{report['never_bowled']}** never bowled, and **{report['never_fielded']}** never "
+                "fielded. For these players, count-based features (for example wickets per match) are 0, "
+                "while rates (averages, strike rates, economy) are left missing, because an undefined "
+                "average is not a poor average. Rates are also missing when the denominator is 0 (for "
+                "example a batting average for a player who was never dismissed). The Methodology tab "
+                "explains how the model handles them."
+            )
+
+        with st.container(border=True):
+            eyebrow("Engineered features · first 20 players")
+            st.dataframe(features.head(20).round(3), alt="Engineered feature values for the first 20 players")
+        with st.container(border=True):
+            eyebrow("Summary statistics")
+            st.dataframe(features.describe().T.round(3), alt="Summary statistics of the engineered features")
 
 # ---------------------------------------------------------------------------
 # 4. Model evaluation
@@ -350,52 +491,68 @@ with evaluation_tab:
     if evaluation is None:
         show_error("Model evaluation", evaluation_error or load_error)
     else:
-        st.write(f"K-Means was fitted for every K from {MIN_K} to {MAX_K} on the same standardized "
-                 f"input (players with at least {min_matches} matches). The gold marker shows the "
-                 f"K selected in the sidebar (K = {k}).")
-        left, right = st.columns(2)
-        with left:
-            show_chart(charts.elbow_chart(evaluation, k), alt="Elbow chart of inertia against K")
-        with right:
-            show_chart(charts.silhouette_chart(evaluation, k), alt="Silhouette score for each K")
-
-        table = evaluation.reset_index().rename(columns={"k": "K", "inertia": "Inertia",
-                                                         "silhouette": "Silhouette", "note": "Note"})
-        if not table["Note"].astype(bool).any():
-            table = table.drop(columns="Note")
-        st.dataframe(table.round(3), hide_index=True, alt="Inertia and silhouette score for each K")
-
         elbow_k, best_k = elbow_heuristic(evaluation), best_silhouette_k(evaluation)
         selected_score = evaluation["silhouette"].get(k)
-        st.subheader("What the metrics say")
-        if elbow_k is None or best_k is None:
-            # Do not st.stop() here: that would also stop the remaining tabs.
-            st.warning("Too few valid K values to compare. Lower the minimum-matches threshold.")
-        else:
-            st.markdown(
-                f"- **Elbow:** the inertia curve bends most sharply at **K = {elbow_k}** "
-                "(largest second difference). Inertia always falls as K grows, so the elbow is a "
-                "visual heuristic, not proof of a correct K.\n"
-                f"- **Silhouette:** the highest score is at **K = {best_k}** "
-                f"({evaluation['silhouette'].max():.3f}, {describe_silhouette(evaluation['silhouette'].max())}).\n"
-                f"- **Selected K = {k}:** silhouette "
-                + ("not available" if pd.isna(selected_score) else
-                   f"{selected_score:.3f} ({describe_silhouette(selected_score)})") + "."
-            )
-            if elbow_k == best_k:
-                st.info(f"Both heuristics point to K = {best_k}.", icon=":material/info:")
+        st.markdown(
+            f'<p class="cx-muted">K-Means was fitted for every K from {MIN_K} to {MAX_K} on the same '
+            f"standardized input (players with at least {min_matches} matches). Orange marks the K "
+            f"selected in the sidebar (K = {k}).</p>", unsafe_allow_html=True)
+        st.space("small")
+        with st.container(horizontal=True):
+            st.metric("Selected K", k, border=True)
+            st.metric("Silhouette at selected K",
+                      "—" if pd.isna(selected_score) else f"{selected_score:.3f}", border=True)
+            st.metric("Highest silhouette", "—" if best_k is None else f"K = {best_k}", border=True)
+            st.metric("Sharpest elbow", "—" if elbow_k is None else f"K = {elbow_k}", border=True)
+            st.metric("PCA variance (PC1 + PC2)",
+                      "—" if result is None else f"{result['pca']['explained']['total']:.1%}", border=True)
+
+        left, right = st.columns(2)
+        with left:
+            chart_card("Elbow method · inertia", charts.elbow_chart(evaluation, k, elbow_k),
+                       alt="Elbow chart of inertia against K")
+        with right:
+            chart_card("Silhouette score", charts.silhouette_chart(evaluation, k),
+                       alt="Silhouette score for each K")
+
+        with st.container(border=True):
+            eyebrow("What the metrics say")
+            if elbow_k is None or best_k is None:
+                # Do not st.stop() here: that would also stop the remaining tabs.
+                st.warning("Too few valid K values to compare. Lower the minimum-matches threshold.")
             else:
-                st.info(
-                    f"The heuristics disagree (elbow K = {elbow_k}, best silhouette K = {best_k}). "
-                    "Neither is decisive: the choice should also consider whether the clusters are "
-                    "interpretable in cricket terms, which is why K stays adjustable.",
-                    icon=":material/info:")
-        st.caption(
-            f"Silhouette scores use every player up to {SILHOUETTE_SAMPLE_SIZE:,}, and a seeded "
-            "random sample of that size above it. Scores between 0.25 and 0.5 are conventionally read "
-            "as weak structure: cricket roles overlap (many players both bat and bowl), so clear, "
-            "well-separated clusters are not expected."
-        )
+                st.markdown(
+                    f"- **Elbow:** the inertia curve bends most sharply at **K = {elbow_k}** "
+                    "(largest second difference). Inertia always falls as K grows, so the elbow is a "
+                    "visual heuristic, not proof of a correct K.\n"
+                    f"- **Silhouette:** the highest score is at **K = {best_k}** "
+                    f"({evaluation['silhouette'].max():.3f}, {describe_silhouette(evaluation['silhouette'].max())}).\n"
+                    f"- **Selected K = {k}:** silhouette "
+                    + ("not available" if pd.isna(selected_score) else
+                       f"{selected_score:.3f} ({describe_silhouette(selected_score)})") + "."
+                )
+                if elbow_k == best_k:
+                    st.info(f"Both heuristics point to K = {best_k}.", icon=":material/info:")
+                else:
+                    st.info(
+                        f"The heuristics disagree (elbow K = {elbow_k}, best silhouette K = {best_k}). "
+                        "Neither is decisive: the choice should also consider whether the clusters are "
+                        "interpretable in cricket terms, which is why K stays adjustable.",
+                        icon=":material/info:")
+            st.caption(
+                f"Silhouette scores use every player up to {SILHOUETTE_SAMPLE_SIZE:,}, and a seeded "
+                "random sample of that size above it. Scores between 0.25 and 0.5 are conventionally read "
+                "as weak structure: cricket roles overlap (many players both bat and bowl), so clear, "
+                "well-separated clusters are not expected."
+            )
+
+        with st.container(border=True):
+            eyebrow("All values")
+            table = evaluation.reset_index().rename(columns={"k": "K", "inertia": "Inertia",
+                                                             "silhouette": "Silhouette", "note": "Note"})
+            if not table["Note"].astype(bool).any():
+                table = table.drop(columns="Note")
+            st.dataframe(table.round(3), hide_index=True, alt="Inertia and silhouette score for each K")
 
 # ---------------------------------------------------------------------------
 # 5. Clusters
@@ -407,6 +564,7 @@ with clusters_tab:
     else:
         interpretation, labels, pca = result["interpretation"], result["labels"], result["pca"]
         names = interpretation["label"].to_dict()
+        sizes = labels.value_counts().sort_index()
 
         with st.container(horizontal=True):
             st.metric("PC1 variance explained", f"{pca['explained']['PC1']:.1%}", border=True)
@@ -414,22 +572,26 @@ with clusters_tab:
             st.metric("PC1 + PC2 combined", f"{pca['explained']['total']:.1%}", border=True)
             st.metric("Inertia", f"{result['inertia']:,.1f}", border=True)
 
-        left, right = st.columns([3, 2])
-        with left:
-            show_chart(charts.pca_scatter(pca["coords"], labels, names, pca["explained"]),
-                       alt="PCA scatter plot of players coloured by cluster")
-        with right:
-            show_chart(charts.loadings_chart(pca["loadings"], label),
-                       alt="Bar chart of PCA loadings for each feature")
-        st.caption(
-            "The PCA plot is a 2D projection of a "
-            f"{result['matrix']['X'].shape[1]}-dimensional space, keeping "
-            f"{pca['explained']['total']:.0%} of the variance. Clusters were found in the full "
-            "space, so some overlap in 2D is expected. "
-            f"PC1 is driven mostly by {pc_description(pca['loadings'], 'PC1')}; "
-            f"PC2 by {pc_description(pca['loadings'], 'PC2')}. "
-            "The sign of a component is arbitrary."
+        chart_card(
+            "PCA projection · players on the first two principal components",
+            charts.pca_scatter(pca["coords"], labels, names, pca["explained"]),
+            alt="PCA scatter plot of players coloured by cluster",
+            caption=(
+                f"A 2D projection of a {result['matrix']['X'].shape[1]}-dimensional space, keeping "
+                f"{pca['explained']['total']:.0%} of the variance. Clusters were found in the full "
+                "space, so some overlap in 2D is expected. Each cluster has its own colour and marker shape. "
+                f"PC1 is driven mostly by {pc_description(pca['loadings'], 'PC1')}; "
+                f"PC2 by {pc_description(pca['loadings'], 'PC2')}. The sign of a component is arbitrary."
+            ),
         )
+
+        left, right = st.columns(2)
+        with left:
+            chart_card("Players per cluster", charts.cluster_sizes_chart(sizes, names),
+                       alt="Bar chart of players per cluster")
+        with right:
+            chart_card("PCA loadings · feature weights", charts.loadings_chart(pca["loadings"], label),
+                       alt="Bar chart of PCA loadings for each feature")
 
         st.subheader("Cluster profiles")
         st.caption(
@@ -438,13 +600,18 @@ with clusters_tab:
             "official classifications, and they do not identify the best players or predict "
             "future performance."
         )
-        columns = st.columns(min(k, 4))
-        for i, cluster_id in enumerate(interpretation.index):
-            with columns[i % len(columns)]:
-                with st.container(border=True, height="stretch"):
-                    st.markdown(f"**{cluster_title(cluster_id, interpretation)}**")
-                    st.caption(f"{int(result['profile'].loc[cluster_id, 'players'])} players")
-                    st.write(interpretation.loc[cluster_id, "explanation"])
+        cluster_ids = list(interpretation.index)
+        per_row = min(k, 4)
+        for row_start in range(0, len(cluster_ids), per_row):
+            row = cluster_ids[row_start:row_start + per_row]
+            for column, cluster_id in zip(st.columns(per_row), row):
+                with column, st.container(border=True, height="stretch"):
+                    cluster_badge(cluster_id)
+                    st.markdown(f"**{interpretation.loc[cluster_id, 'label']}**")
+                    st.caption(f"{int(result['profile'].loc[cluster_id, 'players'])} players · "
+                               f"{sizes[cluster_id] / sizes.sum():.0%}")
+                    st.markdown(f'<p class="cx-muted">{html.escape(interpretation.loc[cluster_id, "explanation"])}</p>',
+                                unsafe_allow_html=True)
 
         profile, overall = result["profile"], result["overall"]
         rows = [c for c in profile.columns if c != "players"]
@@ -454,42 +621,47 @@ with clusters_tab:
         )
         table.insert(0, "Unit", [FEATURE_UNITS.get(f, "") for f in rows])
         table.insert(0, "Statistic (median)", [label(f) for f in rows])
-        st.dataframe(table, hide_index=True, alt="Median real statistics per cluster")
-        st.caption(
-            "Values are real cricket statistics: medians over the cluster's players, using only "
-            "players for whom the statistic is defined. Activity rows are the share of players. "
-            f"'n/a' means fewer than {MIN_DEFINED_FOR_MEDIAN} players in the cluster have that "
-            "statistic (for example bowling rates in a cluster of non-bowlers)."
+        with st.container(border=True):
+            eyebrow("Profile table · real statistics")
+            st.dataframe(table, hide_index=True, alt="Median real statistics per cluster")
+            st.caption(
+                "Values are real cricket statistics: medians over the cluster's players, using only "
+                "players for whom the statistic is defined. Activity rows are the share of players. "
+                f"'n/a' means fewer than {MIN_DEFINED_FOR_MEDIAN} players in the cluster have that "
+                "statistic (for example bowling rates in a cluster of non-bowlers)."
+            )
+
+        chart_card(
+            "Relative strengths · standard deviations from the average player",
+            charts.relative_heatmap(result["relative"], label, names),
+            alt="Heatmap of cluster centres in standard deviations",
+            caption=(
+                "Each cell is the cluster's average standardized value: +1 (orange) means one standard "
+                "deviation above the average modeled player, −1 (violet) one below. These are relative "
+                "scores, not real statistics: −1 economy means a lower (better) economy than average, not "
+                "a negative economy. Undefined rates were filled with medians before standardizing."
+            ),
         )
 
-        st.subheader("Relative strengths")
-        show_chart(charts.relative_heatmap(result["relative"], label, names),
-                   alt="Heatmap of cluster centres in standard deviations")
-        st.caption(
-            "Each cell is the cluster's average standardized value: +1 means one standard deviation "
-            "above the average modeled player, −1 one below. These are relative scores, not real "
-            "statistics: −1 economy means a lower (better) economy than average, not a negative "
-            "economy. Undefined rates were filled with medians before standardizing."
-        )
-
-        st.subheader("Download results")
-        summary = profile.copy()
-        summary.insert(0, "label", interpretation["label"])
-        summary["explanation"] = interpretation["explanation"]
-        with st.container(horizontal=True):
-            st.download_button(
-                "Player results (CSV)", result["results"].to_csv(index=False).encode("utf-8"),
-                file_name=f"cricket_xray_players_k{k}_min{min_matches}.csv", mime="text/csv",
-                icon=":material/download:", on_click="ignore",
-            )
-            st.download_button(
-                "Cluster summary (CSV)", summary.to_csv().encode("utf-8"),
-                file_name=f"cricket_xray_clusters_k{k}_min{min_matches}.csv", mime="text/csv",
-                icon=":material/download:", on_click="ignore",
-            )
-        st.caption(f"Both files match the current settings (K = {k}, minimum {min_matches} "
-                   "matches). Player results contain the full player name, cluster, label, PCA "
-                   "coordinates and engineered features; undefined rates are left blank.")
+        with st.container(border=True):
+            eyebrow("Download results")
+            summary = profile.copy()
+            summary.insert(0, "label", interpretation["label"])
+            summary["explanation"] = interpretation["explanation"]
+            with st.container(horizontal=True):
+                st.download_button(
+                    "Player results (CSV)", result["results"].to_csv(index=False).encode("utf-8"),
+                    file_name=f"cricket_xray_players_k{k}_min{min_matches}.csv", mime="text/csv",
+                    icon=":material/download:", on_click="ignore", type="primary",
+                )
+                st.download_button(
+                    "Cluster summary (CSV)", summary.to_csv().encode("utf-8"),
+                    file_name=f"cricket_xray_clusters_k{k}_min{min_matches}.csv", mime="text/csv",
+                    icon=":material/download:", on_click="ignore",
+                )
+            st.caption(f"Both files match the current settings (K = {k}, minimum {min_matches} "
+                       "matches). Player results contain the full player name, cluster, label, PCA "
+                       "coordinates and engineered features; undefined rates are left blank.")
 
 # ---------------------------------------------------------------------------
 # 6. Player explorer
@@ -518,89 +690,141 @@ with player_tab:
                                   help="Full player name including the country tag, as in the source data.")
 
         cluster_id = labels[player]
+        activity = result["activity"].loc[player]
         with st.container(border=True):
+            eyebrow("Player")
             st.subheader(player)
             with st.container(horizontal=True):
-                st.badge(cluster_title(cluster_id, interpretation), icon=":material/bubble_chart:",
-                         color="primary")
-                st.badge(f"{int(matches[player])} T20 matches", icon=":material/sports_cricket:", color="gray")
-                activity = result["activity"].loc[player]
-                st.badge("Bowls" if activity["has_bowled"] else "Has not bowled", color="gray")
+                cluster_badge(cluster_id, interpretation)
+                st.badge(f"{int(matches[player])} T20 matches", color="gray")
+                st.badge("Has bowled" if activity["has_bowled"] else "Has not bowled", color="gray")
                 if activity["has_kept_wicket"]:
                     st.badge("Has kept wicket", color="gray")
-            st.write(interpretation.loc[cluster_id, "explanation"])
+            st.markdown(f'<p class="cx-muted">{html.escape(interpretation.loc[cluster_id, "explanation"])}</p>',
+                        unsafe_allow_html=True)
 
-        st.subheader("Source statistics")
-        st.caption("Exactly as in the CSV files ('-' = did not bat/bowl or not defined; '*' = not out).")
-        for dataset, cols in SOURCE_COLUMNS.items():
-            raw = data["raw"][dataset].assign(Player=lambda d: d["Player"].str.strip()).set_index("Player")
-            st.markdown(f"**{dataset.capitalize()}**")
-            st.dataframe(raw.loc[[player], cols], hide_index=True, alt=f"{dataset} source statistics")
+        with st.container(horizontal=True):
+            for feature in ["bat_runs_per_inns", "bat_strike_rate", "bowl_wkts_per_match",
+                            "bowl_economy", "field_catches_per_match"]:
+                if feature in features_used.columns:
+                    st.metric(label(feature), fmt(features_used.loc[player, feature]), border=True,
+                              help=FEATURE_UNITS.get(feature))
 
         left, right = st.columns(2)
         with left:
-            st.subheader("Engineered features")
-            same_cluster = labels[labels == cluster_id].index
-            st.dataframe(
-                pd.DataFrame({
-                    "Feature": [label(f) for f in features_used.columns],
-                    "Player": [fmt(features_used.loc[player, f]) for f in features_used.columns],
-                    "Cluster median": [fmt(features_used.loc[same_cluster, f].median()) for f in features_used.columns],
-                    "All players median": [fmt(features_used[f].median()) for f in features_used.columns],
-                    "Unit": [FEATURE_UNITS.get(f, "") for f in features_used.columns],
-                }),
-                hide_index=True, alt="Player's engineered features compared with medians",
-            )
-            st.caption("'n/a' = undefined for this player (for example no wickets, so no bowling average).")
+            with st.container(border=True, height="stretch"):
+                eyebrow("Engineered features")
+                same_cluster = labels[labels == cluster_id].index
+                st.dataframe(
+                    pd.DataFrame({
+                        "Feature": [label(f) for f in features_used.columns],
+                        "Player": [fmt(features_used.loc[player, f]) for f in features_used.columns],
+                        "Cluster median": [fmt(features_used.loc[same_cluster, f].median()) for f in features_used.columns],
+                        "All players median": [fmt(features_used[f].median()) for f in features_used.columns],
+                        "Unit": [FEATURE_UNITS.get(f, "") for f in features_used.columns],
+                    }),
+                    hide_index=True, alt="Player's engineered features compared with medians",
+                )
+                st.caption("'n/a' = undefined for this player (for example no wickets, so no bowling average).")
         with right:
-            st.subheader("Why this cluster")
-            distances = centroid_distances(X, result["centers"], player)
-            nearest, second = distances.index[0], distances.index[1]
-            st.write(
-                f"K-Means assigns each player to the nearest cluster centre in the standardized "
-                f"feature space. {player} is closest to **Cluster {nearest}** (distance "
-                f"{distances.iloc[0]:.2f}); the next closest is Cluster {second} "
-                f"({distances.iloc[1]:.2f})."
-            )
-            centre = result["centers"].loc[cluster_id]
+            with st.container(border=True, height="stretch"):
+                eyebrow("Why this cluster")
+                distances = centroid_distances(X, result["centers"], player)
+                nearest, second = distances.index[0], distances.index[1]
+                st.markdown(
+                    f"K-Means assigns each player to the nearest cluster centre in the standardized "
+                    f"feature space. {player} is closest to **Cluster {nearest}** (distance "
+                    f"{distances.iloc[0]:.2f}); the next closest is Cluster {second} "
+                    f"({distances.iloc[1]:.2f})."
+                )
+                centre = result["centers"].loc[cluster_id]
+                st.dataframe(
+                    pd.DataFrame({
+                        "Model feature": [label(f) for f in X.columns],
+                        "Player (SD)": X.loc[player].round(2).to_numpy(),
+                        "Cluster centre (SD)": centre.round(2).to_numpy(),
+                    }),
+                    hide_index=True, alt="Player's standardized values compared with the cluster centre",
+                )
+                st.caption("Standardized values (SD from the average modeled player), after median "
+                           "filling of undefined rates. They are relative scores, not statistics.")
+
+        with st.container(border=True):
+            eyebrow("Source statistics")
+            st.caption("Exactly as in the CSV files ('-' = did not bat/bowl or not defined; '*' = not out).")
+            for dataset, cols in SOURCE_COLUMNS.items():
+                raw = data["raw"][dataset].assign(Player=lambda d: d["Player"].str.strip()).set_index("Player")
+                st.markdown(f"**{dataset.capitalize()}**")
+                st.dataframe(raw.loc[[player], cols], hide_index=True, alt=f"{dataset} source statistics")
+
+        with st.container(border=True):
+            eyebrow("Most similar players")
+            similar = most_similar_players(X, player, n=5)
             st.dataframe(
                 pd.DataFrame({
-                    "Model feature": [label(f) for f in X.columns],
-                    "Player (SD)": X.loc[player].round(2).to_numpy(),
-                    "Cluster centre (SD)": centre.round(2).to_numpy(),
+                    "Player": similar.index,
+                    "Distance": similar.round(3).to_numpy(),
+                    "Cluster": [cluster_title(labels[p], interpretation) for p in similar.index],
                 }),
-                hide_index=True, alt="Player's standardized values compared with the cluster centre",
+                hide_index=True, alt="Five most similar players by Euclidean distance",
             )
-            st.caption("Standardized values (SD from the average modeled player), after median "
-                       "filling of undefined rates. They are relative scores, not statistics.")
+            st.caption("Nearest neighbours by Euclidean distance in the same standardized feature space "
+                       "used by K-Means (smaller = more similar statistical profile).")
 
-        st.subheader("Most similar players")
-        similar = most_similar_players(X, player, n=5)
-        st.dataframe(
-            pd.DataFrame({
-                "Player": similar.index,
-                "Distance": similar.round(3).to_numpy(),
-                "Cluster": [cluster_title(labels[p], interpretation) for p in similar.index],
-            }),
-            hide_index=True, alt="Five most similar players by Euclidean distance",
-        )
-        st.caption("Nearest neighbours by Euclidean distance in the same standardized feature space "
-                   "used by K-Means (smaller = more similar statistical profile).")
-
-        st.subheader(f"Other players in {cluster_title(cluster_id, interpretation)}")
-        members = result["results"][result["results"]["cluster_id"] == cluster_id]
-        members = members.assign(Matches=members["Player"].map(matches).astype(int))
-        member_cols = ["Player", "Matches", "bat_runs_per_inns", "bat_strike_rate", "bowl_wkts_per_match",
-                       "bowl_economy", "field_catches_per_match", "field_keeper_share"]
-        st.dataframe(
-            members[member_cols].rename(columns={c: label(c) for c in member_cols})
-            .sort_values("Matches", ascending=False).round(2),
-            hide_index=True, alt="Players in the same cluster",
-        )
+        with st.container(border=True):
+            eyebrow(f"Other players in {cluster_title(cluster_id, interpretation)}")
+            members = result["results"][result["results"]["cluster_id"] == cluster_id]
+            members = members.assign(Matches=members["Player"].map(matches).astype(int))
+            member_cols = ["Player", "Matches", "bat_runs_per_inns", "bat_strike_rate", "bowl_wkts_per_match",
+                           "bowl_economy", "field_catches_per_match", "field_keeper_share"]
+            st.dataframe(
+                members[member_cols].rename(columns={c: label(c) for c in member_cols})
+                .sort_values("Matches", ascending=False).round(2),
+                hide_index=True, alt="Players in the same cluster",
+            )
 
 # ---------------------------------------------------------------------------
 # 7. Methodology
 # ---------------------------------------------------------------------------
+METHOD_SECTIONS = [
+    ("Problem", "Cricket players are usually described by fixed roles (batter, bowler, all-rounder, "
+     "wicket-keeper). This project asks whether similar profiles can be *discovered* from career "
+     "statistics alone, without giving the algorithm any labels."),
+    ("Why unsupervised learning", "There is no trustworthy label column to learn from: roles are "
+     "informal and many players do several jobs. Clustering groups players by the similarity of "
+     "their numbers, and the groups are interpreted afterwards."),
+    ("Preprocessing and features", "Players below the minimum-matches threshold are removed. Career "
+     "totals become rates so that long and short careers are comparable, e.g. runs per innings, "
+     "strike rate, wickets per match, economy, catches per match. Cricket overs (10.5 = 10 overs and "
+     "5 balls) are converted to balls before computing economy and strike rate."),
+    ("Missing values", "A player who never bowled has 0 wickets per match, but no economy or bowling "
+     "average: those are *undefined*, not 0, and stay missing during feature engineering. For the "
+     "model, which cannot accept missing values:\n"
+     "- undefined rates are filled with the feature's **median** over players where it is defined "
+     "(fitted on the modeled players only), so a non-bowler gets a typical economy, never an elite one;\n"
+     "- a **has bowled** flag, read from the raw innings column (never from filled values), plus 0 "
+     "wickets per match keeps non-bowlers separate from real bowlers;\n"
+     "- each feature is **clipped to its 1st–99th percentile** so a few tiny-sample extremes (e.g. an "
+     "economy of 24 from two overs) cannot dominate distances."),
+    ("StandardScaler", "Strike rate is in the hundreds while wickets per match is around 1. K-Means "
+     "uses distances, so without scaling the largest-unit features would dominate. Each feature is "
+     "rescaled to mean 0 and standard deviation 1."),
+    ("K-Means", "Chooses K centres and assigns every player to the nearest centre, moving the centres "
+     "until the within-cluster sum of squared distances (**inertia**) stops falling. `k-means++` "
+     "initialization, 10 restarts and a fixed random seed make results reproducible."),
+    ("Elbow method", "Plots inertia against K. Inertia always decreases with more clusters; the "
+     "\"elbow\" where improvement slows is a heuristic for a sensible K."),
+    ("Silhouette score", "For each player, compares the average distance to its own cluster (a) with "
+     "the nearest other cluster (b): s = (b − a) / max(a, b), between −1 and 1. Higher means better "
+     "separated clusters."),
+    ("PCA", "Finds the two directions of greatest variance in the standardized features and projects "
+     "players onto them to draw a 2D map. It is used for visualization only; the loadings show which "
+     "features drive each axis."),
+    ("Interpreting clusters", "Each cluster gets a label from explicit rules on its relative profile "
+     "(e.g. batting score at least 0.5 SD above average → Batting-Oriented). Clusters that match no "
+     "rule keep a neutral name."),
+]
+
 with method_tab:
     st.header("Methodology")
     if data is not None:
@@ -609,61 +833,22 @@ with method_tab:
                       f"`data/` (" + ", ".join(f"`{spec['file']}`" for spec in DATASETS.values()) + ")")
     else:
         data_scope = "the three T20 CSV files in `data/` (not loaded)"
-    st.markdown(
-        "**Data.** Career tables for T20 internationals, one CSV each for batting, bowling and "
+    sections = METHOD_SECTIONS[:2] + [(
+        "Data", "Career tables for T20 internationals, one CSV each for batting, bowling and "
         f"fielding: {data_scope}. The three files are validated and merged on the full player name "
-        "*including the country tag* (some names repeat across countries)."
-    )
-    st.markdown("""
-**Problem.** Cricket players are usually described by fixed roles (batter, bowler,
-all-rounder, wicket-keeper). This project asks whether similar profiles can be
-*discovered* from career statistics alone, without giving the algorithm any labels.
+        "*including the country tag* (some names repeat across countries).")] + METHOD_SECTIONS[2:]
 
-**Why unsupervised learning.** There is no trustworthy label column to learn from:
-roles are informal and many players do several jobs. Clustering groups players by
-similarity of their numbers, and we interpret the groups afterwards.
-
-
-**Preprocessing and features.** Players below the minimum-matches threshold are removed.
-Career totals become rates so that long and short careers are comparable, e.g. runs per
-innings, strike rate, wickets per match, economy, catches per match. Cricket overs
-(10.5 = 10 overs and 5 balls) are converted to balls before computing economy and strike rate.
-
-**Missing values.** A player who never bowled has 0 wickets per match, but no economy or
-bowling average: those are *undefined*, not 0. They stay missing during feature engineering.
-For the model, which cannot accept missing values:
-- undefined rates are filled with the feature's **median** over players where it is defined
-  (fitted on the modeled players only), so a non-bowler gets a typical economy, never an elite one;
-- a **has bowled** flag, read from the raw innings column (never from filled values), plus
-  0 wickets per match keeps non-bowlers separate from real bowlers;
-- each feature is **clipped to its 1st–99th percentile** so a few tiny-sample extremes
-  (e.g. an economy of 24 from two overs) cannot dominate distances.
-
-**StandardScaler.** Strike rate is in the hundreds while wickets per match is around 1.
-K-Means uses distances, so without scaling the largest-unit features would dominate.
-Each feature is rescaled to mean 0 and standard deviation 1.
-
-**K-Means.** Chooses K centres and assigns every player to the nearest centre, moving the
-centres until the within-cluster sum of squared distances (**inertia**) stops falling.
-`k-means++` initialization, 10 restarts and a fixed random seed make results reproducible.
-
-**Elbow method.** Plots inertia against K. Inertia always decreases with more clusters;
-the "elbow" where improvement slows is a heuristic for a sensible K.
-
-**Silhouette score.** For each player, compares the average distance to its own cluster
-(a) with the nearest other cluster (b): s = (b − a) / max(a, b), between −1 and 1.
-Higher means better separated clusters.
-
-**PCA.** Finds the two directions of greatest variance in the standardized features and
-projects players onto them to draw a 2D map. It is used for visualization only; the
-loadings show which features drive each axis.
-
-**Interpreting clusters.** Each cluster gets a label from explicit rules on its relative
-profile (e.g. batting score at least 0.5 SD above average → Batting-Oriented). Clusters
-that match no rule keep a neutral name.
-""")
+    for number, (title, body) in enumerate(sections, start=1):
+        st.divider()
+        left, right = st.columns([1, 3])
+        with left:
+            eyebrow(f"{number:02d}")
+            st.markdown(f"**{title}**")
+        with right:
+            st.markdown(body)
 
     if result is not None:
+        st.divider()
         st.subheader("Model input used in this run")
         used = list(result["matrix"]["X"].columns)
         input_table = pd.DataFrame({
@@ -690,8 +875,11 @@ that match no rule keep a neutral name.
         st.caption("Correlations are computed live on the current players. Left-out features "
                    "still appear in cluster profiles, the player explorer and the downloads.")
 
-    st.subheader("Limitations")
-    st.markdown("""
+    st.divider()
+    left, right = st.columns(2)
+    with left:
+        st.subheader("Limitations")
+        st.markdown("""
 - Career totals cannot separate batting position, era, opposition strength or format changes.
 - Median filling makes non-bowlers look like typical bowlers on economy and strike rate; the
   *has bowled* flag and wickets per match offset this, but not perfectly.
@@ -701,8 +889,9 @@ that match no rule keep a neutral name.
 - Labels come from simple rules and describe statistics, not official roles or player quality.
 - The data is a historical snapshot and is not committed to the repository.
 """)
-    st.subheader("Future improvements")
-    st.markdown("""
+    with right:
+        st.subheader("Future improvements")
+        st.markdown("""
 - Add ODI and Test data (already present in `data/`) for multi-format profiles.
 - Try Gaussian mixture models or hierarchical clustering, which allow softer or nested groups.
 - Weight recent seasons more heavily, or use ball-by-ball data for batting position and phase of play.

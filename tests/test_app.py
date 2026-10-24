@@ -85,8 +85,9 @@ class TestAppWithData(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertEqual(metric(at, "Selected K"), "3")
         self.assertIn("Cluster analysis (K = 3)", [h.value for h in at.header])
-        overview_profiles = at.dataframe[0].value
-        self.assertEqual(len(overview_profiles), 3)
+        # The Clusters profile table has one column per cluster (plus statistic, unit, all players).
+        profile_table = next(d.value for d in at.dataframe if "Statistic (median)" in d.value.columns)
+        self.assertEqual(len(profile_table.columns), 3 + 3)
         # Silhouette shown for K = 3 equals an independent computation.
         features = prepare_features(self.merged, min_matches=5)
         X = build_model_matrix(features, activity_indicators(self.merged, features.index))["X"]
