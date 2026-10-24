@@ -16,7 +16,7 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 from data_loader import DATA_DIR, DataValidationError, load_data, overs_to_balls  # noqa: E402
 from preprocessing import (  # noqa: E402
-    FEATURE_DEFINITIONS, PreprocessingError, get_preprocessing_report,
+    FEATURE_DEFINITIONS, PreprocessingError, activity_indicators, get_preprocessing_report,
     prepare_features, safe_divide,
 )
 
@@ -228,6 +228,31 @@ class TestPrepareFeatures(unittest.TestCase):
         self.assertEqual(report["categories_represented"], ["batting", "bowling", "fielding"])
         for category in ("batting", "bowling", "fielding"):
             self.assertTrue(report["features_by_category"][category])
+
+
+class TestActivityIndicators(unittest.TestCase):
+    def setUp(self):
+        self.data = sample_data()
+        self.features = prepare_features(self.data, min_matches=0)
+        self.activity = activity_indicators(self.data, self.features.index)
+
+    def test_flags_come_from_raw_innings(self):
+        a = self.activity
+        self.assertEqual(a.loc["A Batter (IND)", "has_bowled"], 0)   # never bowled
+        self.assertEqual(a.loc["C Keeper (ENG)", "has_bowled"], 1)   # bowled 10.1 overs, 0 wickets
+        self.assertEqual(a.loc["F NoBat (PAK)", "has_batted"], 0)
+        self.assertEqual(a.loc["C Keeper (ENG)", "has_kept_wicket"], 1)
+        self.assertEqual(a.loc["B Bowler (AUS)", "has_kept_wicket"], 0)
+        self.assertEqual(list(a.index), list(self.features.index))
+
+    def test_unknown_player_is_an_error(self):
+        with self.assertRaises(PreprocessingError):
+            activity_indicators(self.data, ["Nobody (XYZ)"])
+
+    def test_input_not_mutated(self):
+        before = self.data.copy()
+        activity_indicators(self.data, self.features.index)
+        pd.testing.assert_frame_equal(self.data, before)
 
 
 @unittest.skipUnless((DATA_DIR / "Batting" / "t20.csv").is_file(), "real T20 CSVs not present")

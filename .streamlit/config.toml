@@ -1,0 +1,34 @@
+# Cricket X-Ray theme: dark "night match" look with pitch-green, ball-red and
+# trophy-gold accents. Fonts use the system stack so the app works offline.
+
+[theme]
+base = "dark"
+primaryColor = "#3DDC84"            # pitch green
+backgroundColor = "#0B1410"
+secondaryBackgroundColor = "#14231B"
+textColor = "#E6EEE9"
+linkColor = "#7FD8A6"
+borderColor = "#24392D"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "8px"
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+
+greenColor = "#3DDC84"
+redColor = "#F06A6A"                # cricket-ball red
+yellowColor = "#F2C14E"             # trophy gold
+blueColor = "#5BB4F0"
+violetColor = "#B48CF2"
+orangeColor = "#F59E5B"
+grayColor = "#94A89C"
+
+chartCategoricalColors = ["#3DDC84", "#F2C14E", "#F06A6A", "#5BB4F0", "#B48CF2", "#F59E5B", "#4FD1C5", "#E6EEE9"]
+dataframeHeaderBackgroundColor = "#14231B"
+dataframeBorderColor = "#24392D"
+
+[theme.sidebar]
+backgroundColor = "#0F1B15"
+secondaryBackgroundColor = "#14231B"
+
+[browser]
+gatherUsageStats = false

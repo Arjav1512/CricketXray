@@ -182,6 +182,26 @@ def prepare_features(data, min_matches=DEFAULT_MIN_MATCHES):
     return features.drop(columns=unusable)
 
 
+def activity_indicators(data, players):
+    """Whether each player batted, bowled, and kept wicket, read from the raw counts.
+
+    These come straight from the source innings / dismissal columns (never from
+    imputed statistics), so a missing rate can never make a player look active.
+    Returns 0/1 columns indexed like `players` (full Player identifiers).
+    """
+    _check_input(data)
+    cols = ["Inns_Bat", "Inns_Bowl", "Ct Wk_Field", "St_Field"]
+    raw = _to_numeric_columns(data[["Player"] + cols].copy(), cols).set_index("Player")
+    raw = raw.reindex(pd.Index(players, name="Player"))
+    if raw.index.isin(data["Player"]).sum() != len(raw):
+        raise PreprocessingError("Some players are not present in the source data.")
+    return pd.DataFrame({
+        "has_batted": (raw["Inns_Bat"].fillna(0) > 0).astype(int),
+        "has_bowled": (raw["Inns_Bowl"].fillna(0) > 0).astype(int),
+        "has_kept_wicket": ((raw["Ct Wk_Field"].fillna(0) + raw["St_Field"].fillna(0)) > 0).astype(int),
+    }, index=raw.index)
+
+
 def feature_category(name):
     return FEATURE_DEFINITIONS[name][0]
 
