@@ -1,0 +1,29 @@
+# Python environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+
+# Secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Datasets (kept local, not committed)
+data/**/*.csv
+data/**/*.xlsx
+data/**/*.parquet
+# data/ is for datasets only; the notebook lives in notebooks/
+data/**/*.ipynb
+
+# Local AI-agent skill links (symlinks into .venv, machine-specific)
+.agents/
+.claude/
+
+# Generated outputs
+outputs/*
+!outputs/.gitkeep
