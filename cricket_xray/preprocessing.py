@@ -1,8 +1,8 @@
 """Turn the merged T20 table into a numeric feature table for clustering.
 
 Usage:
-    from data_loader import load_data
-    from preprocessing import prepare_features, get_preprocessing_report
+    from cricket_xray.data_loader import load_data
+    from cricket_xray.preprocessing import prepare_features, get_preprocessing_report
 
     merged = load_data()["merged"]
     features = prepare_features(merged, min_matches=5)
@@ -26,7 +26,7 @@ No scaling, clustering, or PCA happens here.
 import numpy as np
 import pandas as pd
 
-from data_loader import overs_to_balls
+from .data_loader import overs_to_balls
 
 DEFAULT_MIN_MATCHES = 5
 

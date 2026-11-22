@@ -4,7 +4,7 @@ Run with:  streamlit run app.py
 
 The sidebar settings (minimum matches, K) drive every tab. All numbers on the
 page are computed live from the CSV files in data/; nothing is hardcoded.
-Visual design: theme tokens in .streamlit/config.toml, chart styling in charts.py,
+Visual design: theme tokens in .streamlit/config.toml, chart styling in cricket_xray/charts.py,
 and a small CSS block below for the few details the theme cannot express.
 """
 
@@ -17,15 +17,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 
-import charts
-from data_loader import DATASETS, DataValidationError, load_data
-from modeling import (
+from cricket_xray import charts
+from cricket_xray.data_loader import DATASETS, DataValidationError, load_data
+from cricket_xray.modeling import (
     DEFAULT_K, EXCLUDED_FROM_MODEL, FEATURE_UNITS, INDICATOR_FEATURES, LABEL_THRESHOLD,
     MAX_K, MIN_DEFINED_FOR_MEDIAN, MIN_K, MODEL_FEATURES, SILHOUETTE_SAMPLE_SIZE, ModelingError,
     best_silhouette_k, build_model_matrix, centroid_distances, describe_silhouette,
     elbow_heuristic, evaluate_k_range, label, model_settings, most_similar_players, run_pipeline,
 )
-from preprocessing import (
+from cricket_xray.preprocessing import (
     CATEGORIES, DEFAULT_MIN_MATCHES, EXCLUDED_FEATURES, FEATURE_DEFINITIONS, PreprocessingError,
     activity_indicators, get_preprocessing_report, prepare_features,
 )

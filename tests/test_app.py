@@ -16,11 +16,11 @@ from streamlit.testing.v1 import AppTest
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from data_loader import DATA_DIR, DATASETS, load_data  # noqa: E402
-from modeling import build_model_matrix, evaluate_k_range  # noqa: E402
-from preprocessing import activity_indicators, prepare_features  # noqa: E402
+from cricket_xray.data_loader import DATA_DIR, DATASETS, load_data  # noqa: E402
+from cricket_xray.modeling import build_model_matrix, evaluate_k_range  # noqa: E402
+from cricket_xray.preprocessing import activity_indicators, prepare_features  # noqa: E402
 
-APP_FILES = ["app.py", "data_loader.py", "preprocessing.py", "modeling.py", "charts.py"]
+PACKAGE = "cricket_xray"  # the app imports its pipeline from this package
 HAS_DATA = all((DATA_DIR / spec["file"]).is_file() for spec in DATASETS.values())
 TIMEOUT = 120
 
@@ -39,8 +39,8 @@ def download_ids(at):
 
 def copy_app(target, players=None):
     """Copy the app into `target`; with `players`, also copy the CSVs filtered to those players."""
-    for name in APP_FILES:
-        shutil.copy(PROJECT_DIR / name, target / name)
+    shutil.copy(PROJECT_DIR / "app.py", target / "app.py")
+    shutil.copytree(PROJECT_DIR / PACKAGE, target / PACKAGE, ignore=shutil.ignore_patterns("__pycache__"))
     (target / ".streamlit").mkdir()
     shutil.copy(PROJECT_DIR / ".streamlit" / "config.toml", target / ".streamlit" / "config.toml")
     if players is not None:

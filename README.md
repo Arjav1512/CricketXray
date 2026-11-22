@@ -53,7 +53,7 @@ The dashboard follows a near-black, typography-led design system:
   stacks, heading sizes, rounded buttons). No web fonts are downloaded.
 - `app.py` adds a small CSS block (no JavaScript) for the uppercase
   monospaced section labels and the header details.
-- `charts.py` repeats the same hex values so Matplotlib charts match the
+- `cricket_xray/charts.py` repeats the same hex values so Matplotlib charts match the
   interface. Each cluster has a fixed colour **and** marker shape, and labels
   always show the cluster number and name, so colour is never the only cue.
 - The layout uses Streamlit's responsive columns: on narrow screens cards
@@ -63,24 +63,35 @@ The dashboard follows a near-black, typography-led design system:
 
 ```
 CricketXray/
-├── app.py                 # Streamlit dashboard (7 tabs, sidebar settings)
-├── data_loader.py         # load_data(): read, validate, clean and merge the CSVs
-├── preprocessing.py       # prepare_features(): minimum-matches filter + engineered features
-├── modeling.py            # imputation, scaling, K-Means, evaluation, PCA, interpretation
-├── charts.py              # Matplotlib charts using the same design tokens as the theme
-├── requirements.txt
-├── .streamlit/config.toml # design-system theme (colours, fonts, radii)
-├── tests/
+├── app.py                      # Streamlit dashboard entry point (7 tabs, sidebar settings)
+├── cricket_xray/               # the analysis pipeline as a Python package
+│   ├── data_loader.py          # load_data(): read, validate, clean and merge the CSVs
+│   ├── preprocessing.py        # prepare_features(): minimum-matches filter + engineered features
+│   ├── modeling.py             # imputation, scaling, K-Means, evaluation, PCA, interpretation
+│   └── charts.py               # Matplotlib charts using the same design tokens as the theme
+├── tests/                      # unittest + Streamlit AppTest suite (80 tests)
 │   ├── test_data_loader.py
 │   ├── test_preprocessing.py
 │   ├── test_modeling.py
-│   └── test_app.py        # Streamlit AppTest
-├── docs/images/           # screenshot and charts used in this README
+│   └── test_app.py
+├── data/                       # CSV datasets (NOT committed, see below)
 ├── notebooks/
-│   └── Cricket_Xray.ipynb # original exploration notebook (unchanged)
-├── data/                  # CSV datasets (NOT committed, see below)
-└── outputs/               # optional local outputs (not committed)
+│   └── Cricket_Xray.ipynb      # original Colab exploration notebook (kept unchanged)
+├── docs/
+│   ├── images/                 # screenshot and charts used in this README
+│   ├── architecture.excalidraw # architecture diagram (open at excalidraw.com)
+│   ├── reports/                # project report (PDF) and technical review (report.md)
+│   └── presentation/           # Milestone 3 slide deck (PPTX)
+├── demo/                       # demonstration video: build script, narration script, subtitles
+├── .streamlit/config.toml      # design-system theme (colours, fonts, radii)
+├── .github/workflows/tests.yml # CI: runs the test suite on every push and pull request
+├── pyproject.toml              # package metadata (pip install -e . for notebooks or scripts)
+└── requirements.txt            # runtime dependencies
 ```
+
+The dashboard stays at the root so `streamlit run app.py` works unchanged; everything it
+computes comes from the `cricket_xray` package. Module names match those used in the
+project report.
 
 ## Dataset requirements
 
@@ -222,7 +233,7 @@ the player explorer and the downloads.
 6. **Interpretation.** Each cluster gets a label from explicit rules on its relative
    profile, for example "batting score at least 0.5 SD above average" gives
    Batting-Oriented. Clusters that match no rule keep a neutral name such as `Cluster 5`.
-   The rules are documented in `modeling.interpret_clusters`.
+   The rules are documented in `cricket_xray.modeling.interpret_clusters`.
 
 ## Results on the development data (default settings)
 
@@ -324,3 +335,5 @@ hierarchical clustering, or use ball-by-ball data to capture batting position an
 phase of play.
 
 The original notebook in `notebooks/` is kept unchanged as the starting point of the project.
+It was written in Google Colab, so it reads files from `/content/` and also uses `seaborn`;
+it is a historical record rather than part of the pipeline.

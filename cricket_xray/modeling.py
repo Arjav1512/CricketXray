@@ -1,8 +1,8 @@
 """Imputation, scaling, K-Means clustering, evaluation, PCA and cluster interpretation.
 
 Usage:
-    from data_loader import load_data
-    from modeling import run_pipeline, evaluate_k_range
+    from cricket_xray.data_loader import load_data
+    from cricket_xray.modeling import run_pipeline, evaluate_k_range
 
     merged = load_data()["merged"]
     result = run_pipeline(merged, min_matches=5, k=4)
@@ -31,7 +31,7 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
-from preprocessing import FEATURE_DEFINITIONS, activity_indicators, prepare_features
+from .preprocessing import FEATURE_DEFINITIONS, activity_indicators, prepare_features
 
 # Reproducibility and model settings.
 RANDOM_STATE = 42

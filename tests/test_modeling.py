@@ -14,14 +14,14 @@ import pandas as pd
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from data_loader import DATA_DIR, load_data  # noqa: E402
-from modeling import (  # noqa: E402
+from cricket_xray.data_loader import DATA_DIR, load_data  # noqa: E402
+from cricket_xray.modeling import (  # noqa: E402
     DEFAULT_K, INDICATOR_FEATURES, MAX_K, MIN_DEFINED_FOR_MEDIAN, MODEL_FEATURES, ModelingError,
     best_silhouette_k, build_model_matrix, centroid_distances, cluster_profiles, describe_silhouette,
     elbow_heuristic, evaluate_k_range, fit_kmeans, interpret_clusters, most_similar_players,
     run_pca, run_pipeline, silhouette, validate_k,
 )
-from preprocessing import activity_indicators, prepare_features  # noqa: E402
+from cricket_xray.preprocessing import activity_indicators, prepare_features  # noqa: E402
 
 NAN = np.nan
 
