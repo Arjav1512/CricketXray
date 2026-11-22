@@ -1,0 +1,4 @@
+# Extra tools for rebuilding the demonstration video, on top of ../requirements.txt.
+# Also required: ffmpeg/ffprobe on PATH, then `python -m playwright install chromium`.
+edge-tts
+playwright

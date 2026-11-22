@@ -1,0 +1,384 @@
+1
+00:00:00,600 --> 00:00:02,199
+Welcome to Cricket X-Ray:
+
+2
+00:00:02,199 --> 00:00:07,758
+discovering cricket player performance
+profiles with unsupervised machine learning.
+
+3
+00:00:07,808 --> 00:00:13,474
+A Milestone 3 project by Arjav Jain,
+Nishkarsh Sisodia and Drishti Chauhan.
+
+4
+00:00:14,533 --> 00:00:18,316
+Cricket players are usually
+described by informal roles:
+
+5
+00:00:18,316 --> 00:00:21,674
+batter, bowler, all-rounder and wicket-keeper.
+
+6
+00:00:21,724 --> 00:00:28,065
+But roles overlap: many batters also bowl,
+and many keepers are leading batters.
+
+7
+00:00:28,115 --> 00:00:34,013
+There is no reliable role label to learn
+from, so this is an unsupervised problem.
+
+8
+00:00:34,063 --> 00:00:37,685
+Our goal: group T20 players
+by how they contribute,
+
+9
+00:00:37,685 --> 00:00:42,977
+using career statistics alone, and
+explain each group in cricket terms.
+
+10
+00:00:44,033 --> 00:00:49,698
+We use three T20 international career
+tables: batting, bowling and fielding.
+
+11
+00:00:49,748 --> 00:00:55,733
+Each holds the same 2,006 players, merged
+on the full name with its country tag.
+
+12
+00:00:55,783 --> 00:01:01,842
+A dash means missing, not zero: a player
+who never bowled has no economy rate.
+
+13
+00:01:01,892 --> 00:01:09,991
+And overs are not decimals: 10.5 overs
+is 10 overs and 5 balls, or 65 balls.
+
+14
+00:01:11,033 --> 00:01:12,782
+Here is the pipeline.
+
+15
+00:01:12,832 --> 00:01:19,715
+We load and validate the files into one
+table of 2,006 players and 44 columns.
+
+16
+00:01:19,765 --> 00:01:24,057
+We keep the 1,105 players
+with at least five matches,
+
+17
+00:01:24,057 --> 00:01:28,517
+and engineer twelve per-innings
+and per-match rates.
+
+18
+00:01:28,567 --> 00:01:33,235
+For the model, we clip each feature
+to its 1st to 99th percentile,
+
+19
+00:01:33,235 --> 00:01:38,930
+fill undefined rates with the median,
+add a has-bowled flag, and standardize.
+
+20
+00:01:38,980 --> 00:01:41,021
+K-Means groups the players.
+
+21
+00:01:41,071 --> 00:01:43,851
+PCA maps them in two dimensions.
+
+22
+00:01:43,901 --> 00:01:47,539
+And simple rules give each
+cluster a readable label.
+
+23
+00:01:48,600 --> 00:01:51,382
+Now, the live Streamlit dashboard.
+
+24
+00:01:51,434 --> 00:01:57,112
+The sidebar sets the minimum matches,
+5, and the number of clusters K, 4.
+
+25
+00:01:57,164 --> 00:02:03,566
+The Overview shows 2,006 source
+players, 1,105 modelled players,
+
+26
+00:02:03,566 --> 00:02:08,818
+9 model features, and a
+silhouette score of 0.269.
+
+27
+00:02:08,870 --> 00:02:13,285
+Below are a PCA preview and
+the size of each cluster.
+
+28
+00:02:13,938 --> 00:02:16,312
+The Data tab checks the inputs.
+
+29
+00:02:16,363 --> 00:02:20,764
+Three source files, 2,006
+rows each, no duplicates,
+
+30
+00:02:20,764 --> 00:02:24,293
+and every player appears in all three.
+
+31
+00:02:24,344 --> 00:02:29,192
+Here are the missing values per
+column; a dash always stays missing.
+
+32
+00:02:29,845 --> 00:02:37,135
+In Features, the filter removes 901
+players with fewer than five matches,
+
+33
+00:02:37,135 --> 00:02:38,783
+leaving 1,105.
+
+34
+00:02:38,835 --> 00:02:44,031
+We engineer twelve rates in three
+groups: batting, bowling and fielding.
+
+35
+00:02:44,082 --> 00:02:47,029
+The definitions table gives each formula.
+
+36
+00:02:47,080 --> 00:02:52,396
+Eight of these rates, plus the has-bowled
+flag, form the nine model inputs.
+
+37
+00:02:53,050 --> 00:02:57,636
+Model evaluation fits K-Means
+for every K from 2 to 8.
+
+38
+00:02:57,687 --> 00:03:06,824
+The elbow bends most sharply at K = 3, while
+the silhouette peaks at K = 4, at 0.269.
+
+39
+00:03:06,875 --> 00:03:13,547
+We chose K = 4: the best silhouette, and
+four clusters that are easy to interpret.
+
+40
+00:03:13,600 --> 00:03:19,202
+A score this modest means weak structure,
+as expected, because roles overlap.
+
+41
+00:03:19,857 --> 00:03:23,555
+The Clusters tab shows the result for K = 4.
+
+42
+00:03:23,606 --> 00:03:31,440
+The PCA map keeps 51.6% of the variance;
+each cluster has its own colour and marker.
+
+43
+00:03:31,491 --> 00:03:39,338
+The four profiles: Bowling-Oriented, 463
+players; Batting-Oriented Also Bowls,
+
+44
+00:03:39,338 --> 00:03:46,127
+320; Batting-Oriented Rarely Bowls,
+216; and Wicket-Keeping, 106.
+
+45
+00:03:46,180 --> 00:03:49,554
+The profile table gives
+the real median statistics.
+
+46
+00:03:49,606 --> 00:03:52,471
+The heatmap shows relative strengths,
+
+47
+00:03:52,471 --> 00:03:57,059
+where the keepers stand out
+at +3.0 standard deviations.
+
+48
+00:03:57,110 --> 00:04:00,465
+And the results can be downloaded as CSV.
+
+49
+00:04:01,118 --> 00:04:04,863
+The Player explorer looks
+at one player at a time.
+
+50
+00:04:04,914 --> 00:04:07,666
+Let's search for V Kohli of India.
+
+51
+00:04:07,717 --> 00:04:11,900
+He falls in Cluster 2,
+Batting-Oriented, Also Bowls.
+
+52
+00:04:11,951 --> 00:04:15,700
+This panel shows that Cluster
+2 is his nearest centre,
+
+53
+00:04:15,700 --> 00:04:19,074
+and compares his standardized values with it.
+
+54
+00:04:19,125 --> 00:04:24,351
+Below are his source statistics,
+exactly as in the CSV files.
+
+55
+00:04:24,402 --> 00:04:27,716
+And here are his five most similar players.
+
+56
+00:04:28,368 --> 00:04:30,714
+Every tab follows the sidebar.
+
+57
+00:04:30,765 --> 00:04:33,381
+Let's change K from 4 to 3.
+
+58
+00:04:33,432 --> 00:04:36,731
+The model retrains at once: the metrics,
+
+59
+00:04:36,731 --> 00:04:43,414
+the PCA map and the cluster sizes all
+update, and the silhouette is now 0.265.
+
+60
+00:04:43,465 --> 00:04:46,280
+Clusters now shows three profiles.
+
+61
+00:04:47,664 --> 00:04:51,701
+Back to K = 4, and the four profiles return.
+
+62
+00:04:52,354 --> 00:04:56,621
+Finally, the Methodology tab
+explains every step in plain words,
+
+63
+00:04:56,621 --> 00:04:59,471
+from the problem to the cluster labels.
+
+64
+00:04:59,522 --> 00:05:04,144
+It ends with the model inputs,
+the limitations and future work.
+
+65
+00:05:05,800 --> 00:05:11,734
+The project has 80 automated tests, written
+with unittest and Streamlit's AppTest.
+
+66
+00:05:11,784 --> 00:05:16,518
+They cover data loading, preprocessing,
+modeling and the dashboard.
+
+67
+00:05:16,568 --> 00:05:19,790
+With the real data present, all 80 pass.
+
+68
+00:05:19,840 --> 00:05:26,344
+Without the data, as on GitHub
+Actions, 52 pass and 28 skip by design.
+
+69
+00:05:27,400 --> 00:05:29,842
+Real players have no true labels,
+
+70
+00:05:29,842 --> 00:05:35,049
+so we also built a synthetic league
+of 60 players, 15 of each type.
+
+71
+00:05:35,099 --> 00:05:40,640
+With K = 4, K-Means recovered
+all four types with 100% purity,
+
+72
+00:05:40,640 --> 00:05:43,392
+and every label was correct.
+
+73
+00:05:43,442 --> 00:05:50,214
+Its silhouette of 0.583 shows that the modest
+real score comes from overlapping roles,
+
+74
+00:05:50,214 --> 00:05:52,197
+not from the pipeline.
+
+75
+00:05:53,233 --> 00:05:55,681
+To conclude: with no labels,
+
+76
+00:05:55,681 --> 00:06:02,224
+Cricket X-Ray found four interpretable
+profiles among 1,105 T20 players.
+
+77
+00:06:02,274 --> 00:06:06,403
+The 0.269 silhouette shows
+that roles form a continuum,
+
+78
+00:06:06,403 --> 00:06:10,632
+and the synthetic test shows
+that the pipeline works.
+
+79
+00:06:10,682 --> 00:06:14,151
+Limits: career totals ignore batting position,
+
+80
+00:06:14,151 --> 00:06:18,247
+era and form, and K-Means
+assumes compact clusters.
+
+81
+00:06:18,297 --> 00:06:21,229
+Next, we would add ODI and Test data,
+
+82
+00:06:21,229 --> 00:06:25,363
+try Gaussian mixtures,
+and use ball-by-ball data.
+
+83
+00:06:25,413 --> 00:06:28,701
+The code is on GitHub. Thank you!
