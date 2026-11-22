@@ -2,6 +2,9 @@
 .venv/
 __pycache__/
 *.py[cod]
+build/
+dist/
+*.egg-info/
 .ipynb_checkpoints/
 
 # OS files
@@ -24,6 +27,7 @@ data/**/*.ipynb
 .agents/
 .claude/
 
-# Generated outputs
-outputs/*
-!outputs/.gitkeep
+# Demo video: build intermediates and generated media (rebuild with demo/make_video.py)
+demo/build/
+demo/frames/
+demo/*.mp4

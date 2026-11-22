@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cricket-xray"
+version = "1.0.0"
+description = "Discovering T20 cricket player performance profiles with K-Means clustering and PCA"
+readme = "README.md"
+requires-python = ">=3.11"
+# Same unpinned runtime dependencies as requirements.txt, which CI and Streamlit hosting install.
+dependencies = ["pandas", "numpy", "scikit-learn", "matplotlib", "streamlit"]
+
+[project.optional-dependencies]
+demo = ["edge-tts", "playwright"]  # demo/make_video.py; also needs ffmpeg and `playwright install chromium`
+
+[project.urls]
+Repository = "https://github.com/Arjav1512/CricketXray"
+
+[tool.setuptools]
+packages = ["cricket_xray"]
