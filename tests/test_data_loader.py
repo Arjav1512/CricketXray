@@ -17,7 +17,7 @@ import pandas as pd
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from data_loader import DATA_DIR, DATASETS, DataValidationError, load_data, overs_to_balls  # noqa: E402
+from cricket_xray.data_loader import DATA_DIR, DATASETS, DataValidationError, load_data, overs_to_balls  # noqa: E402
 
 HAS_DATA = all((DATA_DIR / spec["file"]).is_file() for spec in DATASETS.values())
 NOTEBOOK = PROJECT_DIR / "notebooks" / "Cricket_Xray.ipynb"

@@ -1,7 +1,7 @@
 """Load, validate, and merge the T20 batting, bowling, and fielding datasets.
 
 Usage:
-    from data_loader import load_data
+    from cricket_xray.data_loader import load_data
     data = load_data()
     merged = data["merged"]
 
@@ -19,7 +19,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-DATA_DIR = Path(__file__).resolve().parent / "data"
+# The datasets live in data/ at the project root (one level above this package).
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 # Values that the source uses to mean "no value".
 MISSING_TOKENS = {"-", ""}

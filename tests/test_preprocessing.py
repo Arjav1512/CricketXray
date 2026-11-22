@@ -14,8 +14,8 @@ import pandas as pd
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from data_loader import DATA_DIR, DataValidationError, load_data, overs_to_balls  # noqa: E402
-from preprocessing import (  # noqa: E402
+from cricket_xray.data_loader import DATA_DIR, DataValidationError, load_data, overs_to_balls  # noqa: E402
+from cricket_xray.preprocessing import (  # noqa: E402
     FEATURE_DEFINITIONS, PreprocessingError, activity_indicators, get_preprocessing_report,
     prepare_features, safe_divide,
 )
